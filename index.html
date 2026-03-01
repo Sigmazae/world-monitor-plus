@@ -857,6 +857,12 @@
             });
             document.getElementById('briefDate').innerText = new Date().toISOString().split('T')[0];
             initMap();
+
+            // Fix map rendering bug where tiles don't align because the container was animating
+            setTimeout(() => {
+                if (map) map.invalidateSize();
+            }, 1000);
+
             renderTensions();
             renderGauges();
             startMarketPulse();
