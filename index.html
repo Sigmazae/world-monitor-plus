@@ -1,0 +1,1333 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <title>WORLD MONITOR +</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        :root {
+            --bg: #0a0a0f;
+            --panel-bg: rgba(15, 20, 25, 0.85);
+            --neon-green: #00ff88;
+            --cyan: #00d4ff;
+            --red: #ff3333;
+            --amber: #ffaa00;
+            --border: rgba(0, 255, 136, 0.3);
+            --font: 'JetBrains Mono', 'Courier New', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--neon-green);
+            font-family: var(--font);
+            overflow: hidden;
+            font-size: 14px;
+            text-transform: uppercase;
+        }
+
+        .crt-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+            z-index: 9999;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 280px 1fr 340px;
+            grid-template-rows: 60px 1fr 30px;
+            height: 100vh;
+            gap: 10px;
+            padding: 10px;
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            opacity: 0;
+            transform: translateY(20px);
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.1) inset;
+        }
+
+        .panel.booted {
+            animation: bootUp 0.5s forwards ease-out;
+        }
+
+        @keyframes bootUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .panel::before {
+            content: '';
+            position: absolute;
+            top: -100%;
+            left: 0;
+            width: 100%;
+            height: 20%;
+            background: linear-gradient(to bottom, transparent, rgba(0, 255, 136, 0.2), transparent);
+            animation: scanline 4s linear infinite;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        @keyframes scanline {
+            100% {
+                top: 200%;
+            }
+        }
+
+        .header-title {
+            font-weight: bold;
+            border-bottom: 1px solid var(--border);
+            padding: 5px;
+            background: rgba(0, 255, 136, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Top Bar */
+        .top-bar {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            font-weight: bold;
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            opacity: 0;
+        }
+
+        .glitch {
+            position: relative;
+            font-size: 22px;
+            color: var(--neon-green);
+            letter-spacing: 2px;
+        }
+
+        .defcon {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .defcon-indicator {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 2px solid var(--amber);
+            box-shadow: 0 0 10px var(--amber);
+            animation: pulse 2s infinite;
+        }
+
+        .btn {
+            background: transparent;
+            color: var(--neon-green);
+            border: 1px solid var(--neon-green);
+            padding: 5px 10px;
+            cursor: pointer;
+            font-family: var(--font);
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--neon-green);
+            color: var(--bg);
+        }
+
+        .btn.active {
+            background: var(--red);
+            color: white;
+            border-color: var(--red);
+            box-shadow: 0 0 10px var(--red);
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 5px currentColor;
+            }
+
+            50% {
+                box-shadow: 0 0 20px currentColor;
+            }
+
+            100% {
+                box-shadow: 0 0 5px currentColor;
+            }
+        }
+
+        /* Layout Sections */
+        .sidebar-left {
+            grid-column: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .center-map {
+            grid-column: 2;
+            position: relative;
+            border: 1px solid var(--border);
+            opacity: 0;
+        }
+
+        .sidebar-right {
+            grid-column: 3;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .bottom-ticker {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            background: #0d0d1a;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            white-space: nowrap;
+            opacity: 0;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            filter: contrast(1.2) brightness(0.9);
+            background: var(--bg);
+        }
+
+        /* Left Feed */
+        .feed-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 5px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--neon-green) transparent;
+        }
+
+        .feed-item {
+            border-left: 2px solid var(--neon-green);
+            padding: 5px 10px;
+            margin-bottom: 5px;
+            background: rgba(0, 255, 136, 0.05);
+            font-size: 11px;
+            transition: background 0.3s;
+        }
+
+        .feed-item.new {
+            animation: flash 1s ease-out;
+        }
+
+        @keyframes flash {
+            0% {
+                background: var(--neon-green);
+                color: var(--bg);
+            }
+
+            100% {
+                background: rgba(0, 255, 136, 0.05);
+            }
+        }
+
+        .severity-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        /* Bars & Gauges */
+        .tension-row {
+            margin-bottom: 8px;
+            font-size: 10px;
+        }
+
+        .bar-bg {
+            background: rgba(255, 255, 255, 0.1);
+            height: 8px;
+            width: 100%;
+            margin-top: 2px;
+        }
+
+        .bar-fill {
+            height: 100%;
+            background: var(--neon-green);
+            transition: width 1s ease-in-out;
+        }
+
+        /* Right Panel Elements */
+        .typewriter {
+            font-size: 12px;
+            color: #ddd;
+            padding: 10px;
+            line-height: 1.4;
+            min-height: 120px;
+        }
+
+        .watermark {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-30deg);
+            font-size: 40px;
+            color: rgba(255, 51, 51, 0.1);
+            font-weight: bold;
+            pointer-events: none;
+        }
+
+        .gauge-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            padding: 5px;
+        }
+
+        .gauge-card {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--border);
+            padding: 5px;
+            text-align: center;
+            font-size: 10px;
+        }
+
+        .circular-chart {
+            display: block;
+            margin: 5px auto;
+            max-width: 60px;
+            max-height: 60px;
+        }
+
+        .circle-bg {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.1);
+            stroke-width: 3.8;
+        }
+
+        .circle {
+            fill: none;
+            stroke-width: 2.8;
+            stroke-linecap: round;
+            transition: stroke-dasharray 1s ease;
+        }
+
+        .market-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px;
+            font-size: 11px;
+            border-bottom: 1px solid rgba(0, 255, 136, 0.1);
+            align-items: center;
+        }
+
+        .market-spark {
+            width: 40px;
+            height: 15px;
+        }
+
+        .market-spark path {
+            fill: none;
+            stroke-width: 2;
+        }
+
+        .watchlist-input {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--neon-green);
+            padding: 5px;
+            width: calc(100% - 70px);
+            font-family: var(--font);
+            outline: none;
+        }
+
+        .tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            padding: 5px;
+        }
+
+        .tag {
+            background: rgba(0, 255, 136, 0.2);
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-size: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .badge {
+            width: 6px;
+            height: 6px;
+            background: var(--red);
+            border-radius: 50%;
+            animation: pulse 1s infinite;
+            display: none;
+        }
+
+        .tag.alerted .badge {
+            display: block;
+        }
+
+        /* Modals */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .search-box {
+            width: 50vw;
+            background: var(--panel-bg);
+            border: 1px solid var(--cyan);
+            padding: 20px;
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.2);
+        }
+
+        .search-input {
+            width: 100%;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid var(--cyan);
+            color: var(--cyan);
+            font-size: 24px;
+            padding: 10px;
+            font-family: var(--font);
+            outline: none;
+        }
+
+        .search-results {
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .search-result-item {
+            padding: 10px;
+            border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+            cursor: pointer;
+        }
+
+        .search-result-item:hover {
+            background: rgba(0, 212, 255, 0.1);
+        }
+
+        .slide-modal {
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 400px;
+            height: 100vh;
+            background: var(--panel-bg);
+            border-left: 2px solid var(--neon-green);
+            z-index: 1500;
+            transition: right 0.4s ease;
+            padding: 20px;
+            box-shadow: -10px 0 30px rgba(0, 0, 0, 0.8);
+        }
+
+        .slide-modal.active {
+            right: 0;
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            cursor: pointer;
+            font-size: 20px;
+            color: var(--red);
+        }
+
+        .ticker-wrap {
+            display: flex;
+            animation: ticker 25s linear infinite;
+        }
+
+        .ticker-item {
+            margin: 0 20px;
+        }
+
+        .breaking {
+            color: var(--red);
+            font-weight: bold;
+        }
+
+        @keyframes ticker {
+            0% {
+                transform: translateX(0);
+            }
+
+            100% {
+                transform: translateX(-50%);
+            }
+        }
+
+        /* Window Manager & Floating Sidebar */
+        .icon-bar {
+            position: absolute;
+            top: 50%;
+            left: 10px;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 1000;
+        }
+
+        .icon-btn {
+            width: 40px;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 18px;
+            color: var(--neon-green);
+            transition: 0.2s;
+        }
+
+        .icon-btn:hover {
+            background: var(--border);
+            box-shadow: 0 0 10px var(--neon-green);
+        }
+
+        .drag-window {
+            position: absolute;
+            background: var(--panel-bg);
+            border: 2px solid var(--neon-green);
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.2);
+            z-index: 1050;
+            display: none;
+            flex-direction: column;
+        }
+
+        .drag-window.active {
+            display: flex;
+        }
+
+        .window-header {
+            background: rgba(0, 255, 136, 0.2);
+            padding: 5px 10px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            cursor: move;
+            user-select: none;
+        }
+
+        .window-close {
+            cursor: pointer;
+            color: var(--red);
+            padding: 0 5px;
+        }
+
+        .window-content {
+            padding: 10px;
+            height: 280px;
+            overflow-y: auto;
+        }
+
+        .tv-channels {
+            display: flex;
+            gap: 5px;
+            overflow-x: auto;
+            padding: 5px;
+            border-top: 1px solid var(--border);
+        }
+
+        .tv-channel-btn {
+            font-size: 10px;
+            padding: 3px 6px;
+        }
+
+        .stock-tabs {
+            display: flex;
+            gap: 10px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+        }
+
+        .stock-tab {
+            cursor: pointer;
+            font-size: 11px;
+            opacity: 0.6;
+        }
+
+        .stock-tab:hover {
+            opacity: 1;
+        }
+
+        .stock-tab.active {
+            opacity: 1;
+            color: var(--cyan);
+            box-shadow: 0 2px 0 var(--cyan);
+        }
+
+        .stock-row-v2 {
+            display: flex;
+            align-items: center;
+            font-size: 11px;
+            margin-bottom: 5px;
+            font-family: monospace;
+        }
+
+        .stock-bar-wrap {
+            flex: 1;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 0 10px;
+            display: flex;
+        }
+
+        .stock-bar-fill {
+            height: 100%;
+            transition: width 0.3s;
+        }
+
+        /* Leaflet Overrides */
+        .leaflet-popup-content-wrapper {
+            background: var(--panel-bg);
+            color: var(--neon-green);
+            border: 1px solid var(--border);
+            border-radius: 0;
+            font-family: var(--font);
+        }
+
+        .leaflet-popup-tip {
+            background: var(--panel-bg);
+        }
+
+        a.leaflet-popup-close-button {
+            color: var(--neon-green) !important;
+        }
+
+        .custom-marker {
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+            box-shadow: 0 0 10px currentColor;
+        }
+
+        .trail-line {
+            animation: dash 20s linear infinite;
+        }
+
+        @keyframes dash {
+            to {
+                stroke-dashoffset: -1000;
+            }
+        }
+
+        .color-red {
+            color: var(--red);
+        }
+
+        .color-amber {
+            color: var(--amber);
+        }
+
+        .color-cyan {
+            color: var(--cyan);
+        }
+
+        .color-green {
+            color: var(--neon-green);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="crt-overlay"></div>
+
+    <div class="layout">
+        <!-- TOP BAR -->
+        <header class="top-bar panel" id="p-top">
+            <div class="glitch">WORLD MONITOR <span style="font-size: 10px; vertical-align: super;">BETA</span></div>
+            <div style="display: flex; gap: 20px; align-items: center;">
+                <div id="utcClock">00:00:00 UTC</div>
+                <div class="defcon" title="DEFCON 4: Elevated Readiness">
+                    <span>DEFCON Lvl:</span>
+                    <div class="defcon-indicator" style="color: var(--amber); border-color: var(--amber);">4</div>
+                </div>
+                <div>THREAT INDEX: <span id="threatIdx" class="color-amber">68.4</span></div>
+                <button class="btn" id="audioToggle">🔊 WAR ROOM AUDIO</button>
+                <button class="btn" id="themeToggle">☼ THEME</button>
+            </div>
+        </header>
+
+        <!-- LEFT SIDEBAR -->
+        <aside class="sidebar-left">
+            <div class="panel feed-panel" style="flex: 2" id="p-feed">
+                <div class="header-title">LIVE EVENTS FEED
+                    <span style="font-size: 10px;">[SIM]</span>
+                    <div style="display:flex; gap:5px; font-size:9px;">
+                        <span style="color:var(--red); cursor:pointer;" onclick="filterFeed('red')">CRIT</span>
+                        <span style="color:var(--amber); cursor:pointer;" onclick="filterFeed('amber')">HIGH</span>
+                        <span style="color:var(--neon-green); cursor:pointer;" onclick="filterFeed('all')">ALL</span>
+                    </div>
+                </div>
+                <div class="feed-container" id="feedList"></div>
+            </div>
+
+            <div class="panel" style="flex: 1.2" id="p-bilateral">
+                <div class="header-title">DEFCON BILATERAL TENSIONS</div>
+                <div style="padding: 10px;" id="tensionsList"></div>
+            </div>
+
+            <div class="panel" style="flex: 0.8" id="p-sentiment">
+                <div class="header-title">GLOBAL MEDIA TONE — LIVE</div>
+                <canvas id="sentimentCanvas" style="width:100%; height:100%;"></canvas>
+            </div>
+        </aside>
+
+        <!-- CENTER MAP -->
+        <main class="center-map" id="p-map">
+            <div
+                style="position:absolute; top:10px; right:10px; z-index:1000; display:flex; gap:5px; background:var(--panel-bg); padding:5px; border:1px solid var(--border);">
+                <button class="btn" onclick="toggleLayer('all')">ALL</button>
+                <button class="btn" style="color:var(--red); border-color:var(--red);"
+                    onclick="toggleLayer('conflict')">CONFLICT</button>
+                <button class="btn" style="color:var(--cyan); border-color:var(--cyan);"
+                    onclick="toggleLayer('cyber')">CYBER</button>
+            </div>
+
+            <!-- Icon Toolbar -->
+            <div class="icon-bar">
+                <div class="icon-btn" onclick="toggleWindow('win-tv')" title="LIVE TV">📺</div>
+                <div class="icon-btn" onclick="toggleWindow('win-stocks')" title="MARKETS">📈</div>
+            </div>
+
+            <div id="map"></div>
+        </main>
+
+        <!-- RIGHT SIDEBAR -->
+        <aside class="sidebar-right">
+            <div class="panel" style="flex: 1" id="p-brief">
+                <div class="header-title">
+                    // AI INTEL BRIEF — <span id="briefDate"></span>
+                    <button class="btn" style="font-size:10px; padding:2px 5px;" id="regenBriefBtn">REGENERATE</button>
+                </div>
+                <div class="typewriter" id="aiBriefText"></div>
+                <div class="watermark">TOP SECRET<br>SIMULATED</div>
+            </div>
+
+            <div class="panel" style="flex: 1.2" id="p-gauges">
+                <div class="header-title">CRISIS PROBABILITY GAUGES</div>
+                <div class="gauge-grid" id="gaugeGrid"></div>
+            </div>
+
+            <div class="panel" style="flex: 1" id="p-market">
+                <div class="header-title">MARKET PULSE <span style="font-size:9px;">[SIM DATA]</span></div>
+                <div style="padding: 5px;" id="marketList"></div>
+            </div>
+
+            <div class="panel" style="flex: 0.8" id="p-watch">
+                <div class="header-title">WATCHLIST ALERTS</div>
+                <div style="padding: 5px;">
+                    <input type="text" id="watchInput" class="watchlist-input" placeholder="ADD KEYWORD...">
+                    <button class="btn" onclick="addWatchTag()">WATCH</button>
+                    <div class="tags" id="watchTags">
+                        <div class="tag" data-kw="taiwan">TAIWAN<div class="badge"></div>
+                        </div>
+                        <div class="tag" data-kw="cyber">CYBER<div class="badge"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- BOTTOM TICKER -->
+        <footer class="bottom-ticker" id="p-ticker">
+            <div class="ticker-wrap" id="tickerContent"></div>
+        </footer>
+    </div>
+
+    <!-- SEARCH OVERLAY -->
+    <div class="modal-overlay" id="searchModal">
+        <div class="search-box">
+            <input type="text" id="searchInput" class="search-input"
+                placeholder="SEARCH EVENTS, COUNTRIES, THREATS... [ESC to close]">
+            <div class="search-results" id="searchResults"></div>
+        </div>
+    </div>
+
+    <!-- AI EXPLAIN MODAL -->
+    <div class="slide-modal" id="aiExplainModal">
+        <div class="close-btn" onclick="document.getElementById('aiExplainModal').classList.remove('active')">×</div>
+        <div style="margin-bottom: 20px; padding-bottom:10px; border-bottom:1px solid var(--border);">
+            <span class="color-cyan">AI ANALYSIS COMPLETE</span>
+            <h2 id="aiExpTitle" style="margin: 10px 0;"></h2>
+            <div id="aiExpMeta" style="font-size: 12px; color: #aaa;"></div>
+        </div>
+        <div id="aiExpContent" class="typewriter" style="min-height: 200px;"></div>
+        <div class="watermark" style="font-size: 30px;">SIMULATED</div>
+    </div>
+
+    <!-- V2 SYSTEM MODALS -->
+    <!-- TV Window -->
+    <div class="drag-window" id="win-tv" style="top: 80px; left: 300px; width: 480px;">
+        <div class="window-header" onmousedown="startDrag(event, 'win-tv')" id="header-win-tv">
+            <span>> LIVE NEWS FEED [ON AIR]</span>
+            <span class="window-close" onmousedown="e=>e.stopPropagation()" onclick="toggleWindow('win-tv')">×</span>
+        </div>
+        <div class="window-content" style="padding:0; height: 270px; background:#000;">
+            <iframe id="tvIframe" width="100%" height="100%" src="" frameborder="0" allow="autoplay; encrypted-media"
+                allowfullscreen></iframe>
+        </div>
+        <div class="tv-channels">
+            <button class="btn tv-channel-btn active" onclick="setChannel('nwOXe0H62-k', this)">BLOOMBERG</button>
+            <button class="btn tv-channel-btn" onclick="setChannel('9Auq9mYxFEE', this)">SKY NEWS</button>
+            <button class="btn tv-channel-btn" onclick="setChannel('bEXmNGFAuEQ', this)">AL JAZEERA</button>
+            <button class="btn tv-channel-btn" onclick="setChannel('h3MuIUNCCzI', this)">FRANCE 24</button>
+            <button class="btn tv-channel-btn" onclick="setChannel('Xm0wH8XjP2s', this)">DW</button>
+        </div>
+    </div>
+
+    <!-- Stocks Window -->
+    <div class="drag-window" id="win-stocks" style="top: 120px; left: 350px; width: 420px;">
+        <div class="window-header" onmousedown="startDrag(event, 'win-stocks')" id="header-win-stocks">
+            <span>> GLOBAL MARKETS // TERMINAL</span>
+            <span class="window-close" onmousedown="e=>e.stopPropagation()"
+                onclick="toggleWindow('win-stocks')">×</span>
+        </div>
+        <div class="window-content">
+            <div class="stock-tabs">
+                <span class="stock-tab active" onclick="switchStockTab(event, 'indices')">INDICES</span>
+                <span class="stock-tab" onclick="switchStockTab(event, 'metals')">METALS & ENERGY</span>
+                <span class="stock-tab" onclick="switchStockTab(event, 'exchanges')">EXCHANGES</span>
+            </div>
+            <div id="stock-data-container"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // System Data & Config
+        const COLORS = { crit: 'var(--red)', high: 'var(--amber)', med: 'var(--cyan)', low: 'var(--neon-green)', cyber: 'var(--cyan)', military: 'purple', natural: '#0055ff' };
+        const RAW_COLORS = { crit: '#ff3333', high: '#ffaa00', med: '#00d4ff', low: '#00ff88', military: '#800080' };
+        let audioActive = false;
+        let currentFilter = 'all';
+
+        // Boot Sequence
+        window.addEventListener('DOMContentLoaded', () => {
+            const panels = ['p-top', 'p-feed', 'p-bilateral', 'p-sentiment', 'p-map', 'p-brief', 'p-gauges', 'p-market', 'p-watch', 'p-ticker'];
+            panels.forEach((id, i) => {
+                setTimeout(() => document.getElementById(id).classList.add('booted'), i * 150);
+            });
+            document.getElementById('briefDate').innerText = new Date().toISOString().split('T')[0];
+            initMap();
+            renderTensions();
+            renderGauges();
+            startMarketPulse();
+            startSentimentAnim();
+            regenBrief();
+            updateClock();
+            setInterval(updateClock, 1000);
+            setInterval(generateRandomEvent, 12000);
+            generateRandomEvent(); // initial event
+        });
+
+        // Clock
+        function updateClock() {
+            document.getElementById('utcClock').innerText = new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+            document.getElementById('threatIdx').innerText = (65 + Math.random() * 5).toFixed(1);
+        }
+
+        // Audio Mode
+        document.getElementById('audioToggle').addEventListener('click', function () {
+            audioActive = !audioActive;
+            this.classList.toggle('active');
+            if (audioActive) {
+                let u = new SpeechSynthesisUtterance("Audio monitoring activated.");
+                u.rate = 0.85; u.pitch = 0.7; speechSynthesis.speak(u);
+            } else {
+                speechSynthesis.cancel();
+            }
+        });
+
+        // Theme Toggle
+        document.getElementById('themeToggle').addEventListener('click', function () {
+            const isDark = document.body.style.filter !== 'invert(1)';
+            document.body.style.filter = isDark ? 'invert(1) hue-rotate(180deg)' : '';
+            this.innerText = isDark ? '☾ THEME' : '☼ THEME';
+        });
+
+        // Map Initialization
+        let map, markerLayer;
+        const markersData = [];
+        function initMap() {
+            map = L.map('map', { zoomControl: false, attributionControl: false }).setView([30, 0], 2);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                maxZoom: 20,
+                subdomains: 'abcd'
+            }).addTo(map);
+            L.control.attribution({ position: 'bottomright', prefix: 'SIM DATA' }).addTo(map);
+
+            markerLayer = L.layerGroup().addTo(map);
+
+            // Add fixed sim markers
+            const simData = [
+                { lat: 48.8, lng: 30.5, type: 'conflict', title: 'Tactical Advance Detected', sev: 'high' },
+                { lat: 25.0, lng: 121.5, type: 'military', title: 'Naval Exercises Escalate', sev: 'crit' },
+                { lat: 35.6, lng: 51.3, type: 'cyber', title: 'Grid Infrastructure Hack', sev: 'med' },
+                { lat: 31.2, lng: 34.8, type: 'conflict', title: 'Border Skirmish Reports', sev: 'high' },
+                { lat: 55.7, lng: 37.6, type: 'cyber', title: 'Financial Database Breach', sev: 'high' },
+                { lat: 14.5, lng: 121.0, type: 'natural', title: 'Typhoon Complicates Relief', sev: 'low' },
+                { lat: -1.2, lng: 36.8, type: 'conflict', title: 'Insurgent Activity Spike', sev: 'med' },
+                { lat: 38.9, lng: -77.0, type: 'cyber', title: 'Federal Agency Phishing', sev: 'high' },
+                { lat: 9.0, lng: 111.0, type: 'military', title: 'Artificial Island Expansion', sev: 'high' },
+            ];
+
+            simData.forEach(d => addMarker(d));
+
+            // Add Trails
+            const trails = [
+                [[45, 30], [46, 32], [47, 34], [48, 35]],
+                [[15, 110], [18, 112], [22, 115], [24, 118]],
+                [[25, 55], [26, 52], [28, 50], [30, 48]]
+            ];
+
+            trails.forEach(t => {
+                const path = L.polyline(t, { color: RAW_COLORS.military, weight: 3, opacity: 0.6, dashArray: '10 15' }).addTo(map);
+                path._path.classList.add('trail-line');
+            });
+        }
+
+        function addMarker(data) {
+            markersData.push(data);
+            const col = data.sev === 'crit' ? RAW_COLORS.crit : (data.type === 'cyber' ? RAW_COLORS.med : (data.type === 'military' ? RAW_COLORS.military : RAW_COLORS.high));
+            let size = data.sev === 'crit' ? 45 : (data.sev === 'high' ? 35 : 25);
+            const mk = L.divIcon({
+                className: 'custom-marker',
+                html: `<div style="width:${size}px; height:${size}px; background:${col}; opacity: 0.6; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-weight: bold; box-shadow: 0 0 ${size / 2}px ${col};">${Math.floor(Math.random() * 100)}</div>`,
+                iconSize: [size, size],
+                iconAnchor: [size / 2, size / 2]
+            });
+            const m = L.marker([data.lat, data.lng], { icon: mk }).bindPopup(`
+            <div style="font-weight:bold; margin-bottom:5px;">${data.title}</div>
+            <div style="font-size:10px; color:${col}; margin-bottom:10px;">SEVERITY: ${data.sev.toUpperCase()} | ${data.type.toUpperCase()}</div>
+            <button class="btn" onclick="openAiExplain('${data.title}', '${data.lat}', '${data.lng}')">AI EXPLAIN</button>
+        `);
+            m.type = data.type;
+            m.addTo(markerLayer);
+        }
+
+        function toggleLayer(type) {
+            markerLayer.eachLayer(layer => {
+                if (type === 'all' || layer.type === type) {
+                    if (!map.hasLayer(layer)) map.addLayer(layer);
+                } else {
+                    if (map.hasLayer(layer)) map.removeLayer(layer);
+                }
+            });
+        }
+
+        // Live Feed
+        const eventsSim = [
+            { title: "Unauthorized air incursion reported", region: "Baltic", sev: "high" },
+            { title: "Undersea cable latency detected", region: "North Sea", sev: "med" },
+            { title: "Massive DDoS on central bank", region: "EU", sev: "high" },
+            { title: "Unusual troop build-up via satellite", region: "Eastern Europe", sev: "crit" },
+            { title: "Diplomatic staff recalled", region: "Middle East", sev: "high" },
+            { title: "Unregistered drone flotilla", region: "South Sea", sev: "low" },
+            { title: "Key logic controller exploit found", region: "Global", sev: "crit" },
+        ];
+
+        function filterFeed(sev) {
+            currentFilter = sev;
+            Array.from(document.getElementById('feedList').children).forEach(el => {
+                if (sev === 'all' || el.dataset.sev === sev) el.style.display = 'block';
+                else el.style.display = 'none';
+            });
+        }
+
+        function generateRandomEvent() {
+            const ev = eventsSim[Math.floor(Math.random() * eventsSim.length)];
+            const sevColor = ev.sev === 'crit' ? 'var(--red)' : (ev.sev === 'high' ? 'var(--amber)' : 'var(--cyan)');
+            const mapSev = ev.sev === 'crit' ? 'red' : (ev.sev === 'high' ? 'amber' : 'all');
+
+            const el = document.createElement('div');
+            el.className = 'feed-item new';
+            el.dataset.sev = mapSev;
+            el.innerHTML = `
+            <span class="severity-dot" style="background:${sevColor}"></span>
+            <span style="color:#aaa">${new Date().toISOString().substring(11, 19)}</span> 
+            <b>[${ev.region.toUpperCase()}]</b> ${ev.title.toUpperCase()}
+        `;
+
+            const list = document.getElementById('feedList');
+            list.prepend(el);
+            if (list.children.length > 30) list.removeChild(list.lastChild);
+
+            if (currentFilter !== 'all' && el.dataset.sev !== currentFilter) el.style.display = 'none';
+
+            checkWatchlist(ev.title + " " + ev.region);
+
+            if (audioActive) {
+                let u = new SpeechSynthesisUtterance(`${ev.region.toLowerCase()} update. ${ev.title.toLowerCase()}`);
+                u.rate = 0.85; u.pitch = 0.7; speechSynthesis.speak(u);
+            }
+        }
+
+        function checkWatchlist(text) {
+            const txt = text.toLowerCase();
+            document.querySelectorAll('.tag').forEach(tag => {
+                const kw = tag.dataset.kw.toLowerCase();
+                if (txt.includes(kw)) {
+                    tag.classList.add('alerted');
+                    setTimeout(() => tag.classList.remove('alerted'), 10000);
+                }
+            });
+        }
+
+        function addWatchTag() {
+            const val = document.getElementById('watchInput').value.trim().toUpperCase();
+            if (!val) return;
+            const d = document.createElement('div');
+            d.className = 'tag';
+            d.dataset.kw = val;
+            d.innerHTML = `${val} <div class="badge"></div><span style="cursor:pointer; margin-left:5px;" onclick="this.parentElement.remove()">×</span>`;
+            document.getElementById('watchTags').appendChild(d);
+            document.getElementById('watchInput').value = '';
+        }
+
+        // Tensions
+        const tensions = [
+            { p: "USA 🇺🇸 ↔ 🇷🇺 RUS", val: 82 }, { p: "RUS 🇷🇺 ↔ 🇺🇦 UKR", val: 95 },
+            { p: "USA 🇺🇸 ↔ 🇨🇳 CHN", val: 75 }, { p: "CHN 🇨🇳 ↔ 🇹🇼 TWN", val: 88 },
+            { p: "USA 🇺🇸 ↔ 🇮🇷 IRN", val: 70 }, { p: "IND 🇮🇳 ↔ 🇵🇰 PAK", val: 65 }
+        ];
+
+        function renderTensions() {
+            const h = tensions.map((t, i) => {
+                const c = t.val > 80 ? 'var(--red)' : (t.val > 65 ? 'var(--amber)' : 'var(--neon-green)');
+                return `
+            <div class="tension-row">
+                <div style="display:flex; justify-content:space-between"><span>${t.p}</span><span id="tval-${i}" style="color:${c}">${t.val}</span></div>
+                <div class="bar-bg"><div class="bar-fill" id="tbar-${i}" style="width:${t.val}%; background:${c}"></div></div>
+            </div>`;
+            }).join('');
+            document.getElementById('tensionsList').innerHTML = h;
+
+            setInterval(() => {
+                tensions.forEach((t, i) => {
+                    t.val += Math.floor(Math.random() * 5) - 2;
+                    if (t.val > 99) t.val = 99; if (t.val < 0) t.val = 0;
+                    const elBar = document.getElementById(`tbar-${i}`);
+                    const elVal = document.getElementById(`tval-${i}`);
+                    if (elBar) {
+                        elBar.style.width = t.val + '%';
+                        elVal.innerText = t.val;
+                        const c = t.val > 80 ? 'var(--red)' : (t.val > 65 ? 'var(--amber)' : 'var(--neon-green)');
+                        elBar.style.background = c;
+                        elVal.style.color = c;
+                    }
+                });
+            }, 5000);
+        }
+
+        // Sentiment Wave
+        function startSentimentAnim() {
+            const can = document.getElementById('sentimentCanvas');
+            const ctx = can.getContext('2d');
+            can.width = can.parentElement.clientWidth;
+            can.height = 100;
+            let pOffset = 0;
+
+            function draw() {
+                ctx.clearRect(0, 0, can.width, can.height);
+                ctx.beginPath();
+                ctx.moveTo(0, can.height / 2);
+                for (let i = 0; i < can.width; i += 5) {
+                    // Combine sine waves for chaotic look
+                    const y = Math.sin((i + pOffset) * 0.05) * 10 + Math.sin((i + pOffset) * 0.01) * 20 + can.height / 2;
+                    ctx.lineTo(i, y);
+                }
+                ctx.strokeStyle = 'rgba(0,255,136,0.6)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                pOffset += 2;
+                requestAnimationFrame(draw);
+            }
+            draw();
+        }
+
+        // AI Briefing
+        const briefs = [
+            "SIMULATION EVENT: Intelligence indicates irregular troop configurations near disputed border zone Sector 7. Cyber reconnaissance reveals obfuscated command nodes communicating via burst transmissions. Probability of tactical maneuver estimated at 68% within 48 hours.",
+            "SIMULATION EVENT: Global financial routing infrastructure sustained layered DDoS from unknown APT groups. Origin likely proxy servers in Eastern Europe. System integrity at 92%. Secondary payload suspected but not confirmed.",
+            "SIMULATION EVENT: Satellite imagery confirms relocation of multiple mobile missile platforms. Comms traffic spike correlates with historical mobilization patterns. Regional readiness elevated."
+        ];
+        let typeWriterIdx = 0;
+
+        document.getElementById('regenBriefBtn').addEventListener('click', regenBrief);
+
+        function regenBrief() {
+            const txt = briefs[Math.floor(Math.random() * briefs.length)];
+            const el = document.getElementById('aiBriefText');
+            el.innerHTML = '';
+            let i = 0;
+            clearInterval(typeWriterIdx);
+            typeWriterIdx = setInterval(() => {
+                el.innerHTML += txt.charAt(i);
+                i++;
+                if (i >= txt.length) clearInterval(typeWriterIdx);
+            }, 30);
+        }
+
+        // Gauges
+        const gCards = [
+            { n: "TAIWAN STRAIT", p: 72, tr: '↑↑' }, { n: "NATO DIRECT", p: 35, tr: '→' },
+            { n: "NUCLEAR BREAKOUT", p: 48, tr: '↑' }, { n: "GRID ATTACK", p: 85, tr: '↑↑' }
+        ];
+
+        function renderGauges() {
+            const h = gCards.map(g => {
+                const col = g.p > 50 ? 'var(--red)' : (g.p > 20 ? 'var(--amber)' : 'var(--neon-green)');
+                const dash = g.p + ", 100";
+                return `
+            <div class="gauge-card">
+                <div style="font-weight:bold; height:24px; overflow:hidden;">${g.n}</div>
+                <svg viewBox="0 0 36 36" class="circular-chart">
+                    <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    <path class="circle" stroke="${col}" stroke-dasharray="${dash}" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    <text x="18" y="20.35" class="percentage" text-anchor="middle" fill="${col}" font-size="8px" font-family="var(--font)">${g.p}%</text>
+                </svg>
+                <div style="color:${col}">${g.tr} TREND</div>
+            </div>`;
+            }).join('');
+            document.getElementById('gaugeGrid').innerHTML = h;
+        }
+
+        // Markets
+        const markets = [
+            { name: "S&P 500", val: 5120.50, d: 1.2 }, { name: "OIL (WTI)", val: 82.40, d: -0.5 },
+            { name: "GOLD", val: 2340.10, d: 0.8 }, { name: "BTC", val: 68500, d: -2.1 },
+            { name: "EUR/USD", val: 1.085, d: 0.1 }, { name: "VIX", val: 18.5, d: 5.4 }
+        ];
+
+        function drawSparkline(pts, col) {
+            const max = Math.max(...pts), min = Math.min(...pts);
+            const range = max - min || 1;
+            const d = pts.map((p, i) => `${(i / (pts.length - 1)) * 40},${15 - ((p - min) / range) * 15}`).join(' L ');
+            return `<svg class="market-spark"><path d="M ${d}" stroke="${col}"></path></svg>`;
+        }
+
+        function startMarketPulse() {
+            setInterval(() => {
+                const h = markets.map(m => {
+                    m.val = m.val * (1 + (Math.random() * 0.002 - 0.001));
+                    const c = m.d >= 0 ? 'var(--neon-green)' : 'var(--red)';
+                    const sPts = Array.from({ length: 7 }, () => m.val * (1 + (Math.random() * 0.02 - 0.01)));
+                    return `
+                <div class="market-row">
+                    <span style="width:60px">${m.name}</span>
+                    <span style="font-weight:bold; width:60px; text-align:right;">${m.val > 1000 ? m.val.toFixed(0) : m.val.toFixed(2)}</span>
+                    <span style="color:${c}; width:40px; text-align:right;">${m.d > 0 ? '+' : ''}${m.d}%</span>
+                    ${drawSparkline(sPts, c)}
+                </div>`;
+                }).join('');
+                document.getElementById('marketList').innerHTML = h;
+            }, 5000);
+        }
+
+        // Ticker
+        const tickerItems = [
+            "UN SECURITY COUNCIL CONVENES EMERGENCY SESSION OVER LATEST DEVELOPMENTS",
+            "GLOBAL MARKETS EXPERIENCING HIGH VOLATILITY AMID SUPPLY CHAIN DISRUPTIONS",
+            "UNIDENTIFIED SUBMARINE SIGNATURE DETECTED IN NORTH ATLANTIC CORRIDOR",
+            "MAJOR INTERNET OUTAGE REPORTED IN EAST ASIA REGION - BGP ROUTES REROUTED",
+            "SATELLITE IMAGERY REVEALS NEW CONSTRUCTION AT CLASSIFIED FACILITY",
+            "CYBER COMMAND ELEVATES THREAT CONDITION FOLLOWING SOPHISTICATED ATTACK"
+        ];
+        document.getElementById('tickerContent').innerHTML = tickerItems.map(t => `<span class="ticker-item"><span class="breaking">BREAKING:</span> ${t}</span>`).join('<span style="color:var(--cyan)"> ◆ </span>').repeat(2);
+
+        // Search
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                document.getElementById('searchModal').classList.add('active');
+                document.getElementById('searchInput').focus();
+            }
+            if (e.key === 'Escape') {
+                document.getElementById('searchModal').classList.remove('active');
+            }
+        });
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const q = e.target.value.toLowerCase();
+            const res = document.getElementById('searchResults');
+            if (!q) { res.innerHTML = ''; return; }
+            const matches = eventsSim.filter(ev => ev.title.toLowerCase().includes(q) || ev.region.toLowerCase().includes(q)).slice(0, 5);
+            res.innerHTML = matches.map(m => `
+            <div class="search-result-item" onclick="document.getElementById('searchModal').classList.remove('active');">
+                <span style="color:var(--cyan)">[${m.region}]</span> ${m.title} <span style="font-size:10px; color:${m.sev === 'crit' ? 'var(--red)' : 'var(--amber)'}">[${m.sev.toUpperCase()}]</span>
+            </div>
+        `).join('');
+        });
+
+        // AI EXPLAIN
+        function openAiExplain(title, lat, lng) {
+            document.getElementById('aiExplainModal').classList.add('active');
+            document.getElementById('aiExpTitle').innerText = title;
+            document.getElementById('aiExpMeta').innerText = `COORDS: ${parseFloat(lat).toFixed(4)}, ${parseFloat(lng).toFixed(4)} | TIMESTAMP: ${new Date().toISOString()}`;
+
+            const content = document.getElementById('aiExpContent');
+            content.innerHTML = '';
+            const simTxt = `// AI ANALYSIS INITIATED...\n\nCONTEXT:\nHistorical patterns suggest this anomaly is part of a broader synchronized strategy. Similar signatures were observed 14 months prior during Operation [REDACTED].\n\nIMPACT ASSESSMENT:\nImmediate disruption to local logistics networks is highly probable (87%). Secondary effects may include market volatility in related sectors and diplomatic censure.\n\nRECOMMENDATION:\nIncrease surveillance asset allocation to this sector. Monitor RF spectrum for unusual burst transmissions. Maintain current DEFCON level but elevate localized readiness.`;
+
+            let i = 0;
+            const iv = setInterval(() => {
+                content.innerHTML += simTxt.charAt(i) === '\n' ? '<br>' : simTxt.charAt(i);
+                i++;
+                if (i >= simTxt.length) clearInterval(iv);
+            }, 15);
+        }
+
+        // --- V2 Drag Window Logic ---
+        let zIndexCounter = 2000;
+        let dragObj = null;
+        let dX = 0, dY = 0;
+
+        function toggleWindow(id) {
+            const el = document.getElementById(id);
+            if (el.classList.contains('active')) {
+                el.classList.remove('active');
+                if (id === 'win-tv') document.getElementById('tvIframe').src = '';
+            } else {
+                el.classList.add('active');
+                el.style.zIndex = ++zIndexCounter;
+                if (id === 'win-tv') document.getElementById('tvIframe').src = 'https://www.youtube.com/embed/nwOXe0H62-k?autoplay=1&mute=1';
+                if (id === 'win-stocks') renderEnhancedMarkets();
+            }
+        }
+
+        function startDrag(e, id) {
+            if (e.target.classList.contains('window-close')) return;
+            dragObj = document.getElementById(id);
+            dragObj.style.zIndex = ++zIndexCounter;
+            dX = e.clientX - dragObj.getBoundingClientRect().left;
+            dY = e.clientY - dragObj.getBoundingClientRect().top;
+            document.addEventListener('mousemove', dragWin);
+            document.addEventListener('mouseup', stopDrag);
+        }
+
+        function dragWin(e) {
+            if (!dragObj) return;
+            dragObj.style.left = (e.clientX - dX) + 'px';
+            dragObj.style.top = (e.clientY - dY) + 'px';
+        }
+
+        function stopDrag() {
+            dragObj = null;
+            document.removeEventListener('mousemove', dragWin);
+            document.removeEventListener('mouseup', stopDrag);
+        }
+
+        // --- TV Logic ---
+        function setChannel(vidId, btn) {
+            document.getElementById('tvIframe').src = 'https://www.youtube.com/embed/' + vidId + '?autoplay=1&mute=1';
+            document.querySelectorAll('.tv-channel-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        // --- Expanded Finance Logic ---
+        const enhancedMarketData = {
+            indices: [
+                { sym: "S&P 500", val: 5120.50, pct: 1.2 }, { sym: "NASDAQ", val: 16240.20, pct: 1.8 },
+                { sym: "DOW JONES", val: 38790.10, pct: 0.8 }, { sym: "VIX", val: 18.5, pct: -5.4 },
+                { sym: "FTSE 100", val: 7650.30, pct: -0.4 }, { sym: "NIKKEI 225", val: 39500.10, pct: -1.2 },
+                { sym: "HANG SENG", val: 16500.20, pct: 0.3 }
+            ],
+            metals: [
+                { sym: "GOLD", val: 2340.10, pct: 0.8 }, { sym: "SILVER", val: 28.50, pct: 2.1 },
+                { sym: "COPPER", val: 4.20, pct: -0.5 }, { sym: "CRUDE WTI", val: 82.40, pct: -0.5 },
+                { sym: "BRENT", val: 86.10, pct: -0.3 }, { sym: "NAT GAS", val: 1.85, pct: 4.2 }
+            ],
+            exchanges: [
+                { sym: "NYSE VOL", val: 1450000, pct: 1.1 }, { sym: "LSE VOL", val: 450000, pct: -0.8 },
+                { sym: "TSE VOL", val: 890000, pct: 0.5 }, { sym: "HKEX VOL", val: 620000, pct: -1.5 },
+                { sym: "EURONEXT", val: 710000, pct: 0.2 }
+            ]
+        };
+
+        let activeStockTab = 'indices';
+
+        function switchStockTab(e, tab) {
+            activeStockTab = tab;
+            document.querySelectorAll('.stock-tab').forEach(t => t.classList.remove('active'));
+            e.target.classList.add('active');
+            renderEnhancedMarkets();
+        }
+
+        function renderEnhancedMarkets() {
+            const data = enhancedMarketData[activeStockTab];
+            const html = data.map(m => {
+                m.val = m.val * (1 + (Math.random() * 0.002 - 0.001)); // randomize slightly
+                const isPos = m.pct >= 0;
+                const color = isPos ? 'var(--neon-green)' : 'var(--red)';
+                const barW = Math.min(100, Math.max(5, Math.abs(m.pct) * 15));
+                return `<div class="stock-row-v2">
+                <span style="width:70px">${m.sym}</span>
+                <span style="width:70px; text-align:right">${m.val > 1000 ? m.val.toFixed(0) : m.val.toFixed(2)}</span>
+                <div class="stock-bar-wrap" style="justify-content: ${isPos ? 'flex-start' : 'flex-end'}">
+                    <div class="stock-bar-fill" style="width: ${barW}%; background: ${color}"></div>
+                </div>
+                <span style="width:40px; text-align:right; color:${color}">${isPos ? '+' : ''}${m.pct.toFixed(2)}%</span>
+            </div>`;
+            }).join('');
+            document.getElementById('stock-data-container').innerHTML = html;
+        }
+
+        // Hook enhanced market randomization into the main pulse
+        setInterval(() => {
+            if (document.getElementById('win-stocks').classList.contains('active')) {
+                renderEnhancedMarkets();
+            }
+        }, 4000);
+
+    </script>
+</body>
+
+</html>
